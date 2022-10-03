@@ -13,7 +13,9 @@ import javax.persistence.*;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "suspicious_ips")
+@Table(name = "suspicious_ips", indexes = {
+        @Index(name = "idx_suspiciousip_ip", columnList = "ip")
+})
 public class SuspiciousIp {
 
     @Id

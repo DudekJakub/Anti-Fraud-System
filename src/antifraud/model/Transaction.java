@@ -18,7 +18,9 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = {
+        @Index(name = "idx_transaction_number_date", columnList = "number, date")
+})
 public class Transaction {
 
     @Id
