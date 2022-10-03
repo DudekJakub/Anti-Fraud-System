@@ -27,95 +27,95 @@ public class TransactionProcessValidator {
 
     public Map<Result, String> validateProcess(TransactionRequest request) {
 
-        var amount = request.getAmount();
         var ip = request.getIp();
         var number = request.getNumber();
-        var region = request.getRegion();
-        var date = request.getDate();
 
-        var transactionsRelatedToNumberFromLastHour = transactionRepository.getAllOneHourOld(number, date.minusHours(1), date);
+        var blackIpResult = suspiciousIpRepository.existsByIp(ip) ? Result.PROHIBITED : Result.ALLOWED;
+        var blackCardResult = stolenCardRepository.existsByNumber(number) ? Result.PROHIBITED : Result.ALLOWED;
+        var amountTooHighResult = checkResultForAmount(request);
+        var regionCorrelationResult = checkResultForCorrelation(CorrelationType.REGION, request);
+        var ipCorrelationResult = checkResultForCorrelation(CorrelationType.IP, request);
 
-        var numberOfDifferentRegions = transactionsRelatedToNumberFromLastHour.stream()
-                .map(Transaction::getRegion)
-                .filter(reg -> !reg.equals(region))
-                .collect(Collectors.toSet())
-                .size();
-
-        log.info("numberOfDifferentRegions = {}", numberOfDifferentRegions);
-
-        var numberOfDifferentIps = transactionsRelatedToNumberFromLastHour.stream()
-                .map(Transaction::getIp)
-                .filter(ip_ -> !ip_.equals(ip))
-                .collect(Collectors.toSet())
-                .size();
-
-        log.info("numberOfDifferentIps = {}", numberOfDifferentIps);
-
-        var isBlackIp = suspiciousIpRepository.existsByIp(ip);
-        var isBlackCard = stolenCardRepository.existsByNumber(number);
-        var isAmountTooHigh = amount > 1500;
-        var isRegionCorrelation = numberOfDifferentRegions > 2;
-        var isIpCorrelation = numberOfDifferentIps > 2;
-
-        var mapOfChecks = new TreeMap<>(
+        var mapOfGranularResults = new TreeMap<>(
                 Map.of(
-                        TransactionResponseInfo.AMOUNT, isAmountTooHigh,
-                        TransactionResponseInfo.CARD, isBlackCard,
-                        TransactionResponseInfo.IP, isBlackIp,
-                        TransactionResponseInfo.REGION_CORRELATION, isRegionCorrelation,
-                        TransactionResponseInfo.IP_CORRELATION, isIpCorrelation
+                        TransactionResponseInfo.AMOUNT, amountTooHighResult,
+                        TransactionResponseInfo.CARD, blackCardResult,
+                        TransactionResponseInfo.IP, blackIpResult,
+                        TransactionResponseInfo.REGION_CORRELATION, regionCorrelationResult,
+                        TransactionResponseInfo.IP_CORRELATION, ipCorrelationResult
                 )
         );
 
-        var responseInfoAtomic = new AtomicReference<>("");
-        var transactionStatusAtomic = new AtomicReference<>(Result.ALLOWED);
-
-        var isTransactionProhibited = mapOfChecks.values().stream().anyMatch(aBoolean -> aBoolean);
-
-        if (!isTransactionProhibited) {
-            if (amount > 200 && amount <= 1500) {
-                responseInfoAtomic.set(responseInfoAtomic + TransactionResponseInfo.AMOUNT + ", ");
-                transactionStatusAtomic.set(Result.MANUAL_PROCESSING);
-            } else if (numberOfDifferentRegions == 2 || numberOfDifferentIps == 2 && amount <= 1500) {
-                responseInfoAtomic.set(responseInfoAtomic +
-                        checkCorrelationsForManualProcessing(numberOfDifferentRegions, numberOfDifferentIps));
-                transactionStatusAtomic.set(Result.MANUAL_PROCESSING);
-            }
-        } else {
-            mapOfChecks.forEach((type, aBoolean) -> {
-                if (aBoolean) {
-                    if (!responseInfoAtomic.toString().contains(type)) {
-                        responseInfoAtomic.set(responseInfoAtomic + type + ", ");
-                    }
-                    transactionStatusAtomic.set(Result.PROHIBITED);
-                }
-            });
-        }
-
-        var returnResult = transactionStatusAtomic.get();
-        var returnInfo = prepareReturnInfo(responseInfoAtomic);
+        var returnResult = getTransactionFinalResult(mapOfGranularResults);
+        var returnInfo = getTransactionFinalInfo(returnResult, mapOfGranularResults);
 
         return Map.of(returnResult, returnInfo);
     }
 
-    private String prepareReturnInfo(AtomicReference<String> responseInfoAtomic) {
-        var responseInfoString = responseInfoAtomic.toString();
+    private Result getTransactionFinalResult(Map<String, Result> mapOfGranularResults) {
+        var isAllowed = mapOfGranularResults.values().stream().allMatch(result -> result == Result.ALLOWED);
+        var isManual = mapOfGranularResults.values().stream().anyMatch(result -> result == Result.MANUAL_PROCESSING);
+        var isProhibited = mapOfGranularResults.values().stream().anyMatch(result -> result == Result.PROHIBITED);
 
-        if (responseInfoString.equals("")) {
-            return "none";
-        } else {
-            return responseInfoString.replaceAll(".{2}$", "");
+        if (isAllowed) {
+            return Result.ALLOWED;
+        } else if (isManual && !isProhibited) {
+            return Result.MANUAL_PROCESSING;
         }
+        return Result.PROHIBITED;
     }
 
-    private String checkCorrelationsForManualProcessing(int numberOfDifferentRegionsForCardNumber, int numberOfDifferentIpsForCardNumber) {
-        if (numberOfDifferentRegionsForCardNumber == 2 && numberOfDifferentIpsForCardNumber == 2) {
-            return TransactionResponseInfo.REGION_CORRELATION + ", " + TransactionResponseInfo.IP_CORRELATION  + ", ";
-        } else if (numberOfDifferentRegionsForCardNumber == 2) {
-            return TransactionResponseInfo.REGION_CORRELATION + ", ";
-        } else if (numberOfDifferentIpsForCardNumber == 2) {
-            return TransactionResponseInfo.IP_CORRELATION + ", ";
+    private String getTransactionFinalInfo(Result finalResult, Map<String, Result> mapOfGranularResults) {
+        AtomicReference<String> finalInfo = new AtomicReference<>("");
+
+        mapOfGranularResults.entrySet().stream()
+                .filter(stringResultEntry -> stringResultEntry.getValue() == finalResult)
+                .map(Map.Entry::getKey)
+                .forEach(info -> finalInfo.set(finalInfo + info + ", "));
+
+        return finalResult == Result.ALLOWED ? "none" : finalInfo.get().replaceAll(".{2}$", "");
+    }
+
+    private Result checkResultForAmount(TransactionRequest request) {
+        var amount = request.getAmount();
+
+        if (amount <= 200) {
+            return Result.ALLOWED;
+        } else if (amount <= 1500) {
+            return Result.MANUAL_PROCESSING;
         }
-        return "";
+        return Result.PROHIBITED;
+    }
+
+    private Result checkResultForCorrelation(CorrelationType correlationType, TransactionRequest request) {
+        int numberOfDifferences = getNumberOfDifferentCorrelationValues(correlationType, request);
+
+        if (numberOfDifferences < 2) {
+            return Result.ALLOWED;
+        } else if (numberOfDifferences == 2) {
+            return Result.MANUAL_PROCESSING;
+        }
+        return Result.PROHIBITED;
+    }
+
+    private int getNumberOfDifferentCorrelationValues(CorrelationType correlationType, TransactionRequest request) {
+        var number = request.getNumber();
+        var date = request.getDate();
+
+        var transactionsFromLastHourRelatedToNumber = transactionRepository.getOneHourOldTransactionsByNumber(number, date.minusHours(1), date);
+
+        return switch (correlationType) {
+            case IP -> transactionsFromLastHourRelatedToNumber.stream()
+                    .map(Transaction::getIp)
+                    .filter(ip_ -> !ip_.equals(request.getIp()))
+                    .collect(Collectors.toSet())
+                    .size();
+
+            case REGION -> transactionsFromLastHourRelatedToNumber.stream()
+                    .map(Transaction::getRegion)
+                    .filter(reg -> !reg.equals(request.getRegion()))
+                    .collect(Collectors.toSet())
+                    .size();
+        };
     }
 }
