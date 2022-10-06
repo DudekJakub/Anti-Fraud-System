@@ -28,8 +28,6 @@ public class UserController {
     @PostMapping("/user")
     @ResponseStatus(HttpStatus.CREATED)
     User createUser(@Valid @RequestBody UserDto userDto) {
-//        User userToCreate = mapper.userDtoToUser(userDto);
-
         User userToCreate = UserManualMapper.userDtoToUser(userDto);
 
         log.info("UserDto = {}", userDto);
@@ -39,25 +37,25 @@ public class UserController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
     }
 
-    @PreAuthorize("hasAnyAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PutMapping("/role")
     User changeRole(@Valid @RequestBody ChangeRoleRequest changeRoleRequest) {
         return userService.changeRole(changeRoleRequest);
     }
 
-    @PreAuthorize("hasAnyAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PutMapping("/access")
     UserStatusResponse changeAccess(@Valid @RequestBody UserStatusRequest userStatusRequest) {
         return userService.changeAccess(userStatusRequest);
     }
 
-    @PreAuthorize("hasAnyAuthority('ADMINISTRATOR', 'SUPPORT')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPPORT')")
     @GetMapping("/list")
     List<User> listUsers() {
         return userService.listUsers();
     }
 
-    @PreAuthorize("hasAnyAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @DeleteMapping("/user/{username}")
     Map<String, String> delete(@PathVariable String username) {
         if (userService.delete(username)) {

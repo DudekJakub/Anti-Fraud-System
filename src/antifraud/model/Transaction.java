@@ -1,7 +1,6 @@
 package antifraud.model;
 
 import antifraud.validation.ValidIp;
-import antifraud.validation.ValidStolenCardNumber;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
@@ -19,7 +18,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Table(name = "transactions", indexes = {
-        @Index(name = "idx_transaction_number_date", columnList = "number, date")
+        @Index(name = "idx_transaction_number_date", columnList = "credit_card_id, date")
 })
 public class Transaction {
 
@@ -30,16 +29,23 @@ public class Transaction {
 
     @NotNull
     @Positive
-    private int amount;
+    private Long amount;
 
     @ValidIp
     private String ip;
 
-    @ValidStolenCardNumber
-    private String number;
+    @ManyToOne(targetEntity = CreditCard.class)
+    @JoinColumn(name = "credit_card_id")
+    private CreditCard creditCard;
 
     @NotBlank
     private String region;
 
     private LocalDateTime date;
+
+    @Enumerated(EnumType.STRING)
+    private Result result;
+
+    @Enumerated(EnumType.STRING)
+    private Result feedback;
 }

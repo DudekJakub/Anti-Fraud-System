@@ -6,7 +6,7 @@ import javax.validation.ConstraintValidator;
 import javax.validation.ConstraintValidatorContext;
 import java.util.Arrays;
 
-public class LuhnAlgorithm implements ConstraintValidator<ValidStolenCardNumber, String> {
+public class LuhnAlgorithm implements ConstraintValidator<ValidCardNumber, String> {
 
     @Override
     public boolean isValid(String value, ConstraintValidatorContext context) {

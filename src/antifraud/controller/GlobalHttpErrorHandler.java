@@ -39,7 +39,8 @@ public class GlobalHttpErrorHandler {
             RoleNotFoundException.class,
             UsernameNotFoundException.class,
             SuspiciousIpNotFoundException.class,
-            StolenCardNotFoundException.class
+            StolenCardNotFoundException.class,
+            TransactionNotFoundException.class
     })
     ResponseEntity<String> errorHandlerNotFound(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)

@@ -7,7 +7,7 @@ import antifraud.model.request.StolenCardRequest;
 import antifraud.model.response.StolenCardCreateResponse;
 import antifraud.model.response.StolenCardDeleteResponse;
 import antifraud.service.StolenCardService;
-import antifraud.validation.ValidStolenCardNumber;
+import antifraud.validation.ValidCardNumber;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -24,7 +24,7 @@ import java.util.List;
 @RequestMapping("/api/antifraud/stolencard")
 @AllArgsConstructor
 @Validated
-@PreAuthorize("hasAuthority('SUPPORT')")
+@PreAuthorize("hasRole('SUPPORT')")
 public class StolenCardController {
 
     StolenCardService stolenCardService;
@@ -48,7 +48,7 @@ public class StolenCardController {
     }
 
     @DeleteMapping({"/{number}", ""})
-    StolenCardDeleteResponse deleteStolenCard(@PathVariable(required = false) @ValidStolenCardNumber String number) {
+    StolenCardDeleteResponse deleteStolenCard(@PathVariable(required = false) @ValidCardNumber String number) {
         if (number == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         } else if (stolenCardService.delete(number)) {

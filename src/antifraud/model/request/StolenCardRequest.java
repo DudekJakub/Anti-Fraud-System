@@ -1,6 +1,6 @@
 package antifraud.model.request;
 
-import antifraud.validation.ValidStolenCardNumber;
+import antifraud.validation.ValidCardNumber;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -8,6 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class StolenCardRequest {
 
-    @ValidStolenCardNumber
+    @ValidCardNumber
     String number;
 }

@@ -24,7 +24,7 @@ import java.util.List;
 @RequestMapping("/api/antifraud/suspicious-ip")
 @AllArgsConstructor
 @Validated
-@PreAuthorize("hasAuthority('SUPPORT')")
+@PreAuthorize("hasRole('SUPPORT')")
 public class SuspiciousIpController {
 
     SuspiciousIpService suspiciousIpService;

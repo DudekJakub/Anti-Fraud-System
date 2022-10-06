@@ -1,6 +1,6 @@
 package antifraud.model;
 
-import antifraud.validation.ValidStolenCardNumber;
+import antifraud.validation.ValidCardNumber;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
@@ -23,7 +23,7 @@ public class StolenCard {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long id;
 
-    @ValidStolenCardNumber
+    @ValidCardNumber
     @Column(name = "card_number")
     private String number;
 }

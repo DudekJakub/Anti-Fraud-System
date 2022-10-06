@@ -74,16 +74,13 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findByUsernameIgnoreCase(changeRoleRequest.getUsername())
                 .orElseThrow(() -> new UsernameNotFoundException("User " + changeRoleRequest.getUsername() + " not found"));
 
-        Role newRole = changeRoleRequest.getRole();
+        Role newRole = Role.valueOf(changeRoleRequest.getRole());
 
         if (user.getRole() == newRole) {
             throw new RoleAlreadySetException();
         } else if (newRole == Role.ADMINISTRATOR) {
             throw new AdminAlreadyExistsException();
         }
-//        else if (user.getRole() == Role.ADMINISTRATOR) {
-//            throw new AdminChangeRoleException();
-//        }
 
         user.setRole(newRole);
         return userRepository.save(user);

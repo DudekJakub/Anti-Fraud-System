@@ -1,19 +1,20 @@
 package antifraud.validation;
 
+import antifraud.exception.CreditCardNotFoundException;
 import antifraud.model.Result;
 import antifraud.model.Transaction;
 import antifraud.model.request.TransactionRequest;
+import antifraud.repository.CreditCardRepository;
 import antifraud.repository.StolenCardRepository;
 import antifraud.repository.SuspiciousIpRepository;
 import antifraud.repository.TransactionRepository;
-import antifraud.service.TransactionResponseInfo;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -25,6 +26,8 @@ public class TransactionProcessValidator {
     SuspiciousIpRepository suspiciousIpRepository;
     StolenCardRepository stolenCardRepository;
 
+    CreditCardRepository creditCardRepository;
+
     public Map<Result, String> validateProcess(TransactionRequest request) {
 
         var ip = request.getIp();
@@ -33,8 +36,8 @@ public class TransactionProcessValidator {
         var blackIpResult = suspiciousIpRepository.existsByIp(ip) ? Result.PROHIBITED : Result.ALLOWED;
         var blackCardResult = stolenCardRepository.existsByNumber(number) ? Result.PROHIBITED : Result.ALLOWED;
         var amountTooHighResult = checkResultForAmount(request);
-        var regionCorrelationResult = checkResultForCorrelation(CorrelationType.REGION, request);
-        var ipCorrelationResult = checkResultForCorrelation(CorrelationType.IP, request);
+        var regionCorrelationResult = checkResultForCorrelation(Transaction::getRegion, request);
+        var ipCorrelationResult = checkResultForCorrelation(Transaction::getIp, request);
 
         var mapOfGranularResults = new TreeMap<>(
                 Map.of(
@@ -59,63 +62,61 @@ public class TransactionProcessValidator {
 
         if (isAllowed) {
             return Result.ALLOWED;
-        } else if (isManual && !isProhibited) {
-            return Result.MANUAL_PROCESSING;
         }
-        return Result.PROHIBITED;
+        return isManual && !isProhibited ? Result.MANUAL_PROCESSING : Result.PROHIBITED;
     }
 
     private String getTransactionFinalInfo(Result finalResult, Map<String, Result> mapOfGranularResults) {
-        AtomicReference<String> finalInfo = new AtomicReference<>("");
+        StringBuilder finalInfo = new StringBuilder("");
 
         mapOfGranularResults.entrySet().stream()
                 .filter(stringResultEntry -> stringResultEntry.getValue() == finalResult)
                 .map(Map.Entry::getKey)
-                .forEach(info -> finalInfo.set(finalInfo + info + ", "));
+                .forEach(info -> finalInfo.append(info).append(", "));
 
-        return finalResult == Result.ALLOWED ? "none" : finalInfo.get().replaceAll(".{2}$", "");
+        finalInfo.setLength(finalInfo.length() - 2);
+
+        return finalResult == Result.ALLOWED ? "none" : finalInfo.toString();
     }
 
     private Result checkResultForAmount(TransactionRequest request) {
         var amount = request.getAmount();
+        var creditCardNumber = request.getNumber();
 
-        if (amount <= 200) {
+        var creditCard = creditCardRepository.findByCardNumber(creditCardNumber)
+                .orElseThrow(CreditCardNotFoundException::new);
+
+        var cardMaxAllowedLimit = creditCard.getAllowedLimit();
+        var cardMaxManualProcessingLimit = creditCard.getManualProcessingLimit();
+
+        if (amount <= cardMaxAllowedLimit) {
             return Result.ALLOWED;
-        } else if (amount <= 1500) {
-            return Result.MANUAL_PROCESSING;
         }
-        return Result.PROHIBITED;
+        return amount <= cardMaxManualProcessingLimit ? Result.MANUAL_PROCESSING : Result.PROHIBITED;
     }
 
-    private Result checkResultForCorrelation(CorrelationType correlationType, TransactionRequest request) {
-        int numberOfDifferences = getNumberOfDifferentCorrelationValues(correlationType, request);
-
-        if (numberOfDifferences < 2) {
-            return Result.ALLOWED;
-        } else if (numberOfDifferences == 2) {
-            return Result.MANUAL_PROCESSING;
-        }
-        return Result.PROHIBITED;
-    }
-
-    private int getNumberOfDifferentCorrelationValues(CorrelationType correlationType, TransactionRequest request) {
+    private Result checkResultForCorrelation(Function<Transaction, ?> mapper, TransactionRequest request) {
         var number = request.getNumber();
         var date = request.getDate();
 
-        var transactionsFromLastHourRelatedToNumber = transactionRepository.getOneHourOldTransactionsByNumber(number, date.minusHours(1), date);
+        var transactionsFromLastHourRelatedToNumber = transactionRepository.findByNumberAndDateBetween(number, date.minusHours(1), date);
 
-        return switch (correlationType) {
-            case IP -> transactionsFromLastHourRelatedToNumber.stream()
-                    .map(Transaction::getIp)
-                    .filter(ip_ -> !ip_.equals(request.getIp()))
-                    .collect(Collectors.toSet())
-                    .size();
+        long numberOfDiffs = transactionsFromLastHourRelatedToNumber.stream()
+                .map(mapper)
+                .collect(Collectors.toSet())
+                .size() - 1;
 
-            case REGION -> transactionsFromLastHourRelatedToNumber.stream()
-                    .map(Transaction::getRegion)
-                    .filter(reg -> !reg.equals(request.getRegion()))
-                    .collect(Collectors.toSet())
-                    .size();
-        };
+        if (numberOfDiffs < 2) {
+            return Result.ALLOWED;
+        }
+        return numberOfDiffs == 2 ? Result.MANUAL_PROCESSING : Result.PROHIBITED;
+    }
+
+    private static class TransactionResponseInfo {
+        public static final String IP = "ip";
+        public static final String CARD = "card-number";
+        public static final String AMOUNT = "amount";
+        public static final String REGION_CORRELATION = "region-correlation";
+        public static final String IP_CORRELATION = "ip-correlation";
     }
 }

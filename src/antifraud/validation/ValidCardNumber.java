@@ -8,7 +8,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = LuhnAlgorithm.class)
 @Documented
-public @interface ValidStolenCardNumber {
+public @interface ValidCardNumber {
 
     String message() default "Card number is invalid!";
 
